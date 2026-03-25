@@ -159,19 +159,27 @@ async function run() {
       res.send(result)
 
     })
-    app.post('/parcels', async (req, res) => {
-      const parcel = req.body
-      parcel.createdAt = new Date()
-      const result = await parcelsCollection.insertOne(parcel)
-      res.send(result)
+    app.get('/parcels/rider', async (req, res) => {
+      const { riderEmail, deliverystatus } = req.query;
+      const query = {}
+      if (riderEmail) {
+        query.riderEmail = riderEmail
+      }
+      if (deliverystatus) {
+        query.deliverystatus = { $in: ['driver_assigned', 'rider_arriving'] }
+      }
+      const cursor = parcelsCollection.find(query);
+      const rusult = await cursor.toArray();
+      res.send(rusult);
     })
+
     app.patch('/parcels/:id', async (req, res) => {
       const { riderId, riderName, riderEmail } = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const updateDoc = {
         $set: {
-          deliverystatus: 'briver_assigned',
+          deliveryStatus: 'driver_assigned',
           riderId: riderId,
           riderName: riderName,
           riderEmail: riderEmail
@@ -188,6 +196,24 @@ async function run() {
       const riderRusult = await ridersCollection.updateOne(riderQuery, riderUpdatedDoc);
       res.send(riderRusult)
     })
+    app.patch('/parcels/:id/status', async (req, res) => {
+      const { deliverystatus } = req.body;
+      const query = { _id: new ObjectId(req.params.id) }
+      const updatedDoct = {
+        $set: {
+          deliverystatus: deliverystatus
+        }
+      }
+      const rusult = await parcelsCollection.updateOne(query, updatedDoct);
+      res.send(rusult)
+    })
+    app.post('/parcels', async (req, res) => {
+      const parcel = req.body
+      parcel.createdAt = new Date()
+      const result = await parcelsCollection.insertOne(parcel)
+      res.send(result)
+    })
+
     app.delete('/parcels/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
@@ -234,37 +260,7 @@ async function run() {
       res.send({ url: session.url })
     })
 
-    // old
-    // app.post('/create-checkout-session', async (req, res) => {
-    //   const paymentInfo = req.body;
-    //   const amount = parseInt(paymentInfo.cost) * 100;
 
-    //   const session = await stripe.checkout.sessions.create({
-    //     line_items: [
-    //       {
-    //         price_data: {
-    //           currency: 'USD',
-    //           unit_amount: amount,
-    //           product_data: {
-    //             name: paymentInfo.parcelName
-    //           }
-    //         },
-    //         quantity: 1,
-    //       },
-    //     ],
-    //     customer_email: paymentInfo.senderEmail,
-    //     mode: 'payment',
-    //     metadata: {
-    //       parcelId: paymentInfo.parcelId,
-    //       parcelName: paymentInfo.parcelName
-    //     },
-    //     success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
-    //     cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
-    //   })
-
-    //   console.log(session)
-    //   res.send({ url: session.url })
-    // })
 
     app.patch('/payment-success', async (req, res) => {
       const sessionId = req.query.session_id;
