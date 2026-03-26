@@ -70,6 +70,7 @@ async function run() {
     const paymentCollection = db.collection('payments')
     const userCollection = db.collection('user')
     const ridersCollection = db.collection('riders')
+    // const trackingCollection = db.collection('tracking')
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -80,6 +81,17 @@ async function run() {
       }
       next()
     }
+    // const logtracking = async (trackingId, status) => {
+    //   const log = {
+    //     trackingId,
+    //     status,
+    //     details: status.split('-').join(' '),
+    //     createdAt: new Date()
+    //   }
+    //   const rusult = await trackingCollection.insertOne(log)
+    //   return rusult
+
+    // }
     //  user rlated api
 
     app.get('/users/:email/role', async (req, res) => {
@@ -146,12 +158,12 @@ async function run() {
     // parcl api
     app.get('/parcels', async (req, res) => {
       const quere = {}
-      const { email, deliverystatus } = req.query
+      const { email, deliveryStatus } = req.query
       if (email) {
         quere.senderEmail = email
       }
-      if (deliverystatus) {
-        quere.deliverystatus = deliverystatus
+      if (deliveryStatus) {
+        quere.deliveryStatus = deliveryStatus
       }
       const options = { sort: { createdAt: -1 } }
       const cursor = parcelsCollection.find(quere, options);
@@ -160,13 +172,16 @@ async function run() {
 
     })
     app.get('/parcels/rider', async (req, res) => {
-      const { riderEmail, deliverystatus } = req.query;
+      const { riderEmail, deliveryStatus } = req.query;
       const query = {}
       if (riderEmail) {
         query.riderEmail = riderEmail
       }
-      if (deliverystatus) {
-        query.deliverystatus = { $in: ['driver_assigned', 'rider_arriving'] }
+      if (deliveryStatus !== 'parcel_delivered') {
+        query.deliveryStatus = { $nin: ['parcel_delivered'] }
+      }
+      else {
+        query.deliveryStatus = deliveryStatus
       }
       const cursor = parcelsCollection.find(query);
       const rusult = await cursor.toArray();
@@ -197,14 +212,26 @@ async function run() {
       res.send(riderRusult)
     })
     app.patch('/parcels/:id/status', async (req, res) => {
-      const { deliverystatus } = req.body;
+      const { deliveryStatus, riderId } = req.body;
       const query = { _id: new ObjectId(req.params.id) }
       const updatedDoct = {
         $set: {
-          deliverystatus: deliverystatus
+          deliveryStatus: deliveryStatus
         }
       }
+      if (deliveryStatus === 'parcel_delivered') {
+        // update rider information
+        const riderQuery = { _id: new ObjectId(riderId) }
+        const riderUpdatedDoc = {
+          $set: {
+            workStatus: 'available'
+          }
+        }
+        const riderRusult = await ridersCollection.updateOne(riderQuery, riderUpdatedDoc);
+
+      }
       const rusult = await parcelsCollection.updateOne(query, updatedDoct);
+
       res.send(rusult)
     })
     app.post('/parcels', async (req, res) => {
@@ -286,8 +313,7 @@ async function run() {
         const update = {
           $set: {
             paymentStatus: 'paid',
-            deliverystatus: 'pending-pickup',
-
+            deliveryStatus: 'pending-pickup',
             trackingId: trackingId
           }
         }
@@ -310,6 +336,7 @@ async function run() {
 
         if (session.payment_status === 'paid') {
           const resultPayment = await paymentCollection.insertOne(payment);
+          // logtracking(trackingId, 'pending-pickup')********
           return res.send({
             success: true,
             modifyParcel: result,
