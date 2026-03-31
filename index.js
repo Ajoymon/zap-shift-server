@@ -70,7 +70,7 @@ async function run() {
     const paymentCollection = db.collection('payments')
     const userCollection = db.collection('user')
     const ridersCollection = db.collection('riders')
-    // const trackingCollection = db.collection('tracking')
+    const trackingCollection = db.collection('tracking')
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -81,17 +81,17 @@ async function run() {
       }
       next()
     }
-    // const logtracking = async (trackingId, status) => {
-    //   const log = {
-    //     trackingId,
-    //     status,
-    //     details: status.split('-').join(' '),
-    //     createdAt: new Date()
-    //   }
-    //   const rusult = await trackingCollection.insertOne(log)
-    //   return rusult
+    const logtracking = async (trackingId, status) => {
+      const log = {
+        trackingId,
+        status,
+        details: status.split('_').join(' '),
+        createdAt: new Date()
+      }
+      const rusult = await trackingCollection.insertOne(log)
+      return rusult
 
-    // }
+    }
     //  user rlated api
 
     app.get('/users/:email/role', async (req, res) => {
@@ -189,7 +189,7 @@ async function run() {
     })
 
     app.patch('/parcels/:id', async (req, res) => {
-      const { riderId, riderName, riderEmail } = req.body;
+      const { riderId, riderName, riderEmail, trackingId } = req.body;
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const updateDoc = {
@@ -209,10 +209,12 @@ async function run() {
         }
       }
       const riderRusult = await ridersCollection.updateOne(riderQuery, riderUpdatedDoc);
+      // log tracking
+      logtracking(trackingId, 'driver_assigned')
       res.send(riderRusult)
     })
     app.patch('/parcels/:id/status', async (req, res) => {
-      const { deliveryStatus, riderId } = req.body;
+      const { deliveryStatus, riderId, trackingId } = req.body;
       const query = { _id: new ObjectId(req.params.id) }
       const updatedDoct = {
         $set: {
@@ -231,12 +233,18 @@ async function run() {
 
       }
       const rusult = await parcelsCollection.updateOne(query, updatedDoct);
+      // log tracking
+      logtracking(trackingId, deliveryStatus)
+
 
       res.send(rusult)
     })
     app.post('/parcels', async (req, res) => {
       const parcel = req.body
+      const trackingId = generateTrackingId()
       parcel.createdAt = new Date()
+      parcel.trackingId = trackingId;
+      logtracking(trackingId, 'parcel_created')
       const result = await parcelsCollection.insertOne(parcel)
       res.send(result)
     })
@@ -277,7 +285,8 @@ async function run() {
         mode: 'payment',
         metadata: {
           parcelId: paymentinfo.parcelId,
-          parcelName: paymentinfo.parcelName
+          parcelName: paymentinfo.parcelName,
+          trackingId: paymentinfo.trackingId
         },
         customer_email: paymentinfo.senderEmail,
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -304,8 +313,8 @@ async function run() {
 
 
 
-
-      const trackingId = generateTrackingId();
+      // user the previous tracking id created during the parcel create which was set the session metadata during session creation
+      const trackingId = session.metadata.trackingId;
 
       if (session.payment_status === 'paid') {
         const id = session.metadata.parcelId;
@@ -313,8 +322,8 @@ async function run() {
         const update = {
           $set: {
             paymentStatus: 'paid',
-            deliveryStatus: 'pending-pickup',
-            trackingId: trackingId
+            deliveryStatus: 'pending-pickup'
+
           }
         }
 
@@ -336,7 +345,7 @@ async function run() {
 
         if (session.payment_status === 'paid') {
           const resultPayment = await paymentCollection.insertOne(payment);
-          // logtracking(trackingId, 'pending-pickup')********
+          logtracking(trackingId, 'parcel_paid')
           return res.send({
             success: true,
             modifyParcel: result,
@@ -415,6 +424,13 @@ async function run() {
       rider.createdAt = new Date();
       const result = await ridersCollection.insertOne(rider);
       res.send(result)
+    })
+    // tracking related api
+    app.get('/trackings/:trackingId/logs', async (req, res) => {
+      const trackingId = req.params.trackingId;
+      const query = { trackingId };
+      const rusult = await trackingCollection.find(query).toArray()
+      res.send(rusult)
     })
 
 
