@@ -19,8 +19,10 @@ app.use(express.json())
 app.use(cors())
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./zap-shift-c5f1a-firebase-adminsdk-fbsvc-b621e760b6.json");
-const { assert, count } = require('console')
+
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -77,6 +79,15 @@ async function run() {
       const query = { email };
       const user = await userCollection.findOne(query);
       if (!user || user.role !== 'admin') {
+        return res.status(403).send({ message: 'forbiden akceg' })
+      }
+      next()
+    }
+    const verifyRider = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      if (!user || user.role !== 'rider') {
         return res.status(403).send({ message: 'forbiden akceg' })
       }
       next()
@@ -262,6 +273,12 @@ async function run() {
           $group: {
             _id: '$deliveryStatus',
             count: { $sum: 1 }
+          }
+        }
+        , {
+          $project: {
+            status: '$_id',
+            count: 1
           }
         }
       ]
@@ -496,8 +513,8 @@ async function run() {
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
